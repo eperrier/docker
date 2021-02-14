@@ -1,0 +1,5 @@
+FROM tensorflow/tensorflow:latest-gpu-jupyter
+RUN apt-get -y update
+RUN python3 -m pip install --upgrade pip
+RUN pip install scipy matplotlib seaborn sklearn statsmodels
+
