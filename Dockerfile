@@ -1,3 +1,3 @@
-FROM example/nanoer
-ADD notes.txt /notes.txt 
-CMD ["/bin/nano","notes.txt"]
+FROM tensorflow/tensorflow:latest
+RUN apt-get -y update
+RUN pip3 install seaborn sklearn statsmodels
