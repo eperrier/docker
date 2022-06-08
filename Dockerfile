@@ -1,4 +1,47 @@
-FROM tensorflow/tensorflow:latest-jupyter
-RUN apt-get -y update
-RUN pip3 install seaborn sklearn statsmodels torch
-#RUN pip3 torch jupyter tqdm ipywidgets
+FROM nvidia/cuda:11.6.0-devel-ubuntu20.04
+
+# given by builder
+ARG PIP_TAG
+# something like "gcc libc-dev make libatlas-base-dev ruby-dev"
+ARG APT_PACKAGES="git wget"
+
+WORKDIR /dalle
+
+ADD requirements.txt dalle-flow/
+COPY executors dalle-flow/executors
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-pip wget libglib2.0-0 libsm6 libxrender1 libxext6 libgl1 \
+    && ln -sf python3 /usr/bin/python \
+    && ln -sf pip3 /usr/bin/pip \
+    && pip install --upgrade pip \
+    && pip install wheel setuptools
+
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/libcudnn8_8.4.0.27-1+cuda11.6_amd64.deb \
+    && apt install ./libcudnn8_8.4.0.27-1+cuda11.6_amd64.deb
+
+RUN if [ -n "${APT_PACKAGES}" ]; then apt-get update && apt-get install --no-install-recommends -y ${APT_PACKAGES}; fi && \
+    git clone --depth=1 https://github.com/JingyunLiang/SwinIR.git  && \
+    git clone --depth=1 https://github.com/CompVis/latent-diffusion.git && \
+    git clone --depth=1 https://github.com/hanxiao/glid-3-xl.git && \
+    pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_releases.html && \
+    pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 && \
+    cd latent-diffusion && pip install --timeout=1000 -e . && cd - && \
+    cd glid-3-xl && pip install --timeout=1000 -e . && cd - && \
+    cd dalle-flow && pip install --timeout=1000 --compile -r requirements.txt && cd - && \
+    cd glid-3-xl && \
+    wget -q https://dall-3.com/models/glid-3-xl/bert.pt &&  \
+    wget -q https://dall-3.com/models/glid-3-xl/kl-f8.pt &&  \
+    wget -q https://dall-3.com/models/glid-3-xl/finetune.pt && cd - && \
+    # now remove apt packages
+    if [ -n "${APT_PACKAGES}" ]; then apt-get remove -y --auto-remove ${APT_PACKAGES} && apt-get autoremove && apt-get clean && rm -rf /var/lib/apt/lists/*; fi
+
+ADD flow.yml dalle-flow/
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
+
+WORKDIR /dalle/dalle-flow
+
+ENTRYPOINT ["jina", "flow", "--uses", "flow.yml"]
